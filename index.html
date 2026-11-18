@@ -2130,6 +2130,12 @@
   "len": 19.2,
   "lead": 1.5
  },
+ "xr": {
+  "eye": 1.6,
+  "stickOn": 0.6,
+  "stickOff": 0.3,
+  "startDelay": 3
+ },
  "vr": {
   "fov": 76,
   "ipd": 0.085,
@@ -3745,6 +3751,7 @@ class HanumanRun {
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
   document.body.insertBefore(renderer.domElement, document.body.firstChild);
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xffffff, 45, 170);
@@ -4961,8 +4968,9 @@ class HanumanRun {
   function lyric(i) { const v = DATA.verses[i]; $('lyric').innerHTML = v.line + '<small>' + (v.id.charAt(0) === 'D' ? 'Doha' : 'Chaupai ' + v.id) + '</small>'; }
   function hideCard() { $('card').style.display = 'none'; }
   function startCard() {
-    card(TX.title, '<p>' + (SONG.ready || !ac ? TX.intro : SONG.failed ? 'The song could not load.' : TX.loading) + '</p><div id="keys"><span><b>↔</b>' + TX.keysSide + '</span><span><b>↑</b>' + TX.keysUp + '</span><span><b>↓</b>' + TX.keysDown + '</span></div><button id="vrBtn" class="link">VR headset · tilt your head to play</button><button id="practiceBtn" class="link">Practice the beat (20 s, no song)</button><button id="howto" class="link">How to play</button><button id="diaryBtn" class="link">My Chalisa diary · ' + diaryCount() + ' / ' + DATA.verses.length + ' pages</button>', TX.start);
+    card(TX.title, '<p>' + (SONG.ready || !ac ? TX.intro : SONG.failed ? 'The song could not load.' : TX.loading) + '</p><div id="keys"><span><b>↔</b>' + TX.keysSide + '</span><span><b>↑</b>' + TX.keysUp + '</span><span><b>↓</b>' + TX.keysDown + '</span></div><button id="xrBtn" class="link" style="display:none">Quest VR · play with the right controller</button><button id="vrBtn" class="link">VR headset · tilt your head to play</button><button id="practiceBtn" class="link">Practice the beat (20 s, no song)</button><button id="howto" class="link">How to play</button><button id="diaryBtn" class="link">My Chalisa diary · ' + diaryCount() + ' / ' + DATA.verses.length + ' pages</button>', TX.start);
     const vb = $('vrBtn'); if (vb) vb.addEventListener('click', function (e) { e.stopPropagation(); vrEnter(); });
+    const qb = $('xrBtn'); if (qb) { qb.style.display = XR.ok ? '' : 'none'; qb.addEventListener('click', function (e) { e.stopPropagation(); xrEnter(); }); }
     const pb = $('practiceBtn'); if (pb) pb.addEventListener('click', function (e) { e.stopPropagation(); hideCard(); practiceIntro(); });
     const db = $('diaryBtn'); if (db) db.addEventListener('click', function (e) { e.stopPropagation(); openDiary(0); });
     const h = $('howto'); if (h) h.addEventListener('click', function (e) { e.stopPropagation(); hideCard(); tutorial(practiceIntro); });
@@ -5006,7 +5014,7 @@ class HanumanRun {
         SFX.templeBell(); SFX.shankh(); bellSwing = 4;
         pop(TX.offeredPop + ' ' + game.lastOffered + '  +' + e.value);   // the run does not stop (Prashant, 16 Nov)
       } else if (e.type === 'stretch') { hideCard(); layItems(); applyTheme(); pop(theme.name); }
-      else if (e.type === 'over') { vrLeave(); darshan(function () {
+      else if (e.type === 'over') { vrLeave(); xrLeave(); darshan(function () {
         let paths = 0; try { paths = (parseInt(localStorage.getItem('hcr.paths'), 10) || 0) + 1; localStorage.setItem('hcr.paths', paths); } catch (x) { paths = 1; }
         const st = game.stars();
         const acc = BEATS_TOTAL ? Math.round(game.diyas / BEATS_TOTAL * 100) : 0;
@@ -5134,6 +5142,35 @@ class HanumanRun {
     });
     renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h);
   }
+  const xrRig = new THREE.Group(); scene.add(xrRig); xrRig.add(camera);
+  const XR = { on: false, ok: false, cfg: DATA.xr, arm: { x: true, y: true, a: true, b: true, t: true } };
+  if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(function (ok) { XR.ok = ok; const b = $('xrBtn'); if (b) b.style.display = ok ? '' : 'none'; if (ok && /[?&]xr=1/.test(location.search)) xrCard(); }).catch(function () {});
+  function xrCard() { card('QUEST VR', '<p>Stand or sit facing forward, then press the button.</p><p><b>Right controller:</b> thumbstick left / right = change lane, up or <b>A</b> = jump, down or <b>B</b> = slide, trigger = start.</p>', ''); $('cBody').insertAdjacentHTML('beforeend', '<button id="xrGo" class="big">ENTER VR</button>'); $('xrGo').addEventListener('click', function (e) { e.stopPropagation(); xrEnter(); }); }
+  function xrEnter() {
+    audio(); if (!navigator.xr) return;
+    navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] }).then(function (session) {
+      XR.on = true; hideCard(); renderer.xr.setSession(session);
+      session.addEventListener('end', function () { XR.on = false; xrRig.position.set(0, 0, 0); size(); if (game.state === 'running') { setPaused(true); } });
+      if (game.practice) game.setPractice(false); show(game.reset()); hideCard();
+      setTimeout(function () { if (XR.on && game.state === 'ready') LAB.api.start(); }, XR.cfg.startDelay * 1000);
+    }).catch(function (err) { console.error('xr', err); });
+  }
+  function xrLeave() { const s = renderer.xr.getSession(); if (s) s.end(); }
+  function xrInput() {                          // right controller: one move per push, re-armed when the stick comes back
+    const s = renderer.xr.getSession(); if (!s) return;
+    for (const src of s.inputSources) {
+      if (src.handedness !== 'right' || !src.gamepad) continue;
+      const g = src.gamepad, ax = g.axes, x = ax.length >= 4 ? ax[2] : (ax[0] || 0), y = ax.length >= 4 ? ax[3] : (ax[1] || 0), on = XR.cfg.stickOn, off = XR.cfg.stickOff;
+      const btn = function (i) { return !!(g.buttons[i] && g.buttons[i].pressed); };
+      if (game.state === 'running') {
+        if (XR.arm.x && Math.abs(x) > on) { XR.arm.x = false; if (x > 0) LAB.api.right(); else LAB.api.left(); } else if (Math.abs(x) < off) XR.arm.x = true;
+        if (XR.arm.y && Math.abs(y) > on) { XR.arm.y = false; if (y < 0) LAB.api.jump(); else LAB.api.duck(); } else if (Math.abs(y) < off) XR.arm.y = true;
+        if (btn(4)) { if (XR.arm.a) { XR.arm.a = false; LAB.api.jump(); } } else XR.arm.a = true;
+        if (btn(5)) { if (XR.arm.b) { XR.arm.b = false; LAB.api.duck(); } } else XR.arm.b = true;
+      }
+      if (btn(0)) { if (XR.arm.t) { XR.arm.t = false; if (LAB.paused) setPaused(false); else if (game.state === 'ready') LAB.api.start(); else if (game.state === 'darshan') LAB.api.continueRun(); } } else XR.arm.t = true;
+    }
+  }
   function size() {
     renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight;
     camera.fov = camera.aspect < 1 ? 68 : 52; camera.updateProjectionMatrix();
@@ -5167,7 +5204,7 @@ class HanumanRun {
     if (shake > 0) { shake -= dt; camPos.x += (Math.random() - 0.5) * shake * 0.8; camPos.y += (Math.random() - 0.5) * shake * 0.6; }
     if (VR.on) { camPos.z -= VR.cfg.closer; camPos.y -= VR.cfg.lower; camAt.y -= VR.cfg.lower * 0.5; }
     camera.position.copy(camPos); camera.lookAt(camAt);
-    sky.position.copy(camera.position);
+    if (XR.on) { xrRig.position.set(camPos.x, camPos.y - XR.cfg.eye - VR.cfg.lower, camPos.z - VR.cfg.closer); sky.position.copy(xrRig.position); } else { xrRig.position.set(0, 0, 0); sky.position.copy(camera.position); }
     sun.target.position.set(0, 0, -6); sun.position.set(-14, 20, -15);
     // hints for the first stretch
     let want = '';
@@ -5244,9 +5281,9 @@ class HanumanRun {
   }
   $('pause').addEventListener('click', function (e) { e.stopPropagation(); setPaused(true); });
   $('paused').addEventListener('click', function (e) { e.stopPropagation(); setPaused(false); });
-  document.addEventListener('visibilitychange', function () { if (document.hidden) setPaused(true); else if (!LAB.paused && ac && ac.state === 'suspended') ac.resume(); });
+  document.addEventListener('visibilitychange', function () { if (XR.on) return; if (document.hidden) setPaused(true); else if (!LAB.paused && ac && ac.state === 'suspended') ac.resume(); });
   let last = performance.now();
-  (function frame(now) {
+  function frame(now) {
     $('pause').style.display = game.state === 'running' ? 'block' : 'none';
     now = now || last;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -5255,8 +5292,9 @@ class HanumanRun {
     if (!LAB.paused) show(game.step(sdt));
     draw(dt);
     LAB.ready = true;
-    requestAnimationFrame(frame);
-  })();
+    if (XR.on) xrInput();
+  }
+  renderer.setAnimationLoop(frame);   /* also keeps running inside the headset, where window frames stop */
 })();
 </script>
 
