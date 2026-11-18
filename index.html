@@ -5273,6 +5273,7 @@ class HanumanRun {
   printRam(function () { layItems(); });
   layItems(); applyTheme(); show([]);
   if (/[?&]vr=1/.test(location.search)) { card('VR HEADSET', '<p>Tap the button, put the phone sideways in the headset and look straight ahead.</p><p>Tilt your head left or right to change lane, look up to jump, look down to slide. Tap the screen to recentre.</p>', ''); $('cBody').insertAdjacentHTML('beforeend', '<button id="vrGo" class="big">START IN VR</button>'); $('vrGo').addEventListener('click', function (e) { e.stopPropagation(); vrEnter(); }); }
+  else if (/[?&]xr=1/.test(location.search)) card('QUEST VR', '<p>Checking for VR...</p>', ''); /* xrCard() replaces it once VR is confirmed */
   else if (firstTime()) tutorial(practiceIntro); else startCard();
   function setPaused(on) {
     if (on && game.state !== 'running') { if (ac && document.hidden) ac.suspend(); return; }
